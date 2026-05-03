@@ -1,0 +1,26 @@
+{
+  "entities": {
+    "Video": {
+      "title": "Video Demonstration",
+      "description": "A field training video or troubleshooting clip.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Display title of the video" },
+        "description": { "type": "string", "description": "Brief summary of the video content" },
+        "url": { "type": "string", "description": "URL to the video source (YouTube, Vimeo, or direct upload)" },
+        "thumbnail": { "type": "string", "description": "URL to the video thumbnail image" },
+        "category": { "type": "string", "enum": ["Installation", "Troubleshooting", "Safety", "Maintenance"] },
+        "userId": { "type": "string", "description": "ID of the user who added the video" },
+        "userEmail": { "type": "string", "description": "Email of the user who added the video" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "url", "category", "userId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/videos/{videoId}": {
+      "schema": "Video",
+      "description": "Collection of community and official training videos."
+    }
+  }
+}

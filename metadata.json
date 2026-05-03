@@ -1,0 +1,15 @@
+{
+  "name": "Door Buddy",
+  "description": "The ultimate mobile assistant for garage door technicians. Features Gilly, an AI built by certified garage door technicians for troubleshooting, comprehensive torsion spring calculators, installation guides, professional video demonstrations, and site inspection checklists.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "Multimodal AI Troubleshooting",
+    "Installation & Removal SOPs",
+    "Spring Engineering Calculator",
+    "Technical Field Manuals",
+    "Safety & Site Inspection Checklists",
+    "Video Training & Demonstrations"
+  ]
+}
