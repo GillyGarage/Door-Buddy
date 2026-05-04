@@ -40,7 +40,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
   const currentTip = KNOWLEDGE_BOMBS[tipIndex];
 
   const cards = [
-    { id: 'springs', icon: Calculator, accentIcon: Wrench, label: 'Engineering Calc', color: 'bg-brand-accent text-white', shadow: 'shadow-brand-accent/20', desc: 'Spring Math & Counterbalance Specs' },
+    { id: 'springs', icon: Calculator, accentIcon: Wrench, label: 'Spring Calculations', color: 'bg-brand-accent text-white', shadow: 'shadow-brand-accent/20', desc: 'Spring Math & Counterbalance Specs' },
     { id: 'checklists', icon: CheckSquare, accentIcon: ClipboardCheck, label: 'Site Checklists', color: 'bg-brand-accent text-white', shadow: 'shadow-brand-accent/20', desc: 'Safety & 54-Point Inspections' },
     { id: 'edu', icon: GraduationCap, accentIcon: Award, label: 'Field Training', color: 'bg-brand-accent text-white', shadow: 'shadow-brand-accent/20', desc: 'Advanced Technical Education' },
     { id: 'studio', icon: Video, accentIcon: Zap, label: 'Field Studio', color: 'bg-brand-accent text-white', shadow: 'shadow-brand-accent/20', desc: 'Visual Training & Demos' },
@@ -66,7 +66,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
               Door Buddy
             </h2>
             <p className="text-brand-accent/80 font-bold text-xs sm:text-sm italic tracking-tight">
-              "You've got door problems, I got door solutions"
+              "You've got door problems, I've got door solutions"
             </p>
           </div>
 

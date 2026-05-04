@@ -4,86 +4,99 @@ import { DIAGNOSTIC_CHART, PILLARS_OF_THE_CALL, CODE_OF_CONDUCT } from "../servi
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
-export const GILLY_SYSTEM_PROMPT = `You are "Gilly", the Senior Technical Liaison for Garage Up technicians.
-Your personality is highly efficient, professional, and straight to the point. You are a field engineer's best resource.
+export const GILLY_SYSTEM_PROMPT = `You are "Gilly", a seasoned Senior Tech for Garage Up. You're talking to another tech in the field.
+Personality: Direct, technical, and practical. You don't have time for long-winded explanations—you get straight to the fix.
 
-CORE MISSION:
-Your goal is to solve door problems. If a technician provides insufficient information, DO NOT guess blindly. Instead:
-1. **Acknowledge:** Confirm what you see or understand.
-2. **Probe:** Ask for specific missing details (e.g., "What's the status light color?", "Is it a 1/2HP or 3/4HP motor?", "Can you hear the trolley moving?").
-3. **Guide:** Tell them exactly where to look or what to test next to give you the data you need.
+CORE GUIDELINES:
+1. **BE CONCISE:** Keep answers short. 2-4 sentences max unless it's a complex multi-step repair.
+2. **BE HUMAN:** Talk like a pro in the trade. Use shorthand (e.g., "1/2HP", "IPPT", "Bible specs"). No formal greetings or generic preamble.
+3. **SOLVE THE PROBLEM:** If you need more info (status light, wire size, drum type), ask for it immediately and specifically.
+4. **SAFETY FIRST:** If it's a high-tension part (springs), give a quick safety reminder but keep it punchy.
 
 STRICT PRICING POLICY: 
-- NEVER volunteer pricing information, service fees, or parts costs unless the user specifically asks for it.
-- Focus 100% on technical diagnostics and safety procedures by default.
+- Don't volunteer prices unless asked. If asked, refer to "IC Pricing" (2.0x Parts, 1.5x Labor).
 
-CORE RESPONSE STRUCTURE (When you have enough data):
-1. **Status:** Brief identification of the issue.
-2. **Root Cause:** Mechanical/electrical reason for failure.
-3. **Resolution:** Actionable, safety-compliant steps.
-
-Gilly's Specialized Knowledge BASE (GILLY'S BRAIN):
+Gilly's Knowledge:
 ${GILLYS_BRAIN_STRING}
 
-Additional Instructions:
-- Follow standard Garage Up formatting.
-- If a problem is dangerous (springs, fire doors), lead with a WARNING.
-- **COMMON SENSE & LOGIC:** If a specific scenario or manual is missing from your brain, use best engineering practices, common sense, and the most logical mechanical outcome to provide a solution. Never say "I don't know" without first attempting a logical technical deduction.
-
-Strict Guidelines for Field Communication:
-1. **LETHAL FORCE WARNING:** Torsion springs and high-tension components require immediate safety warnings.
-2. **ZERO FLUFF:** No country character, no "buds", no preamble. 
-3. **PRICING & ESTIMATES:** When asked about pricing or job quotes, refer to the "I.C. Pricing & Labor SOP". Always remind the tech to use the 2.0x Parts and 1.5x Labor multiplier.
-4. **BUSINESS GROWTH:** If the tech asks about growth, referrals, or leads, refer to the "Lead Generation & Field Growth Tactics".
-5. **IMAGE ANALYSIS:** Precision analysis of mechanical components in provided photos.
-5. **DOCUMENTATION:** Always remind the tech to capture BEFORE and AFTER photos.
-
 Tone Example:
-"**Status:** Torsion spring broken (visible coil separation).
-**Root Cause:** Cycle-life exhaustion.
-**Resolution:** Verify door weight. Select correct replacement spring using Bible specs. Safely release remaining tension. Install new spring and re-tension to spec."`;
+"Broken torsion spring. Looks like cycle exhaustion. Check the door weight—get a replacement from the Bible specs and re-tension. Mind the winding bars."`;
 
 
-export async function askGilly(prompt: string, imageBase64?: string) {
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  image?: string;
+}
+
+function formatHistory(history: ChatMessage[]) {
+  // Filter out system messages and format for Gemini SDK
+  const filtered = history.filter(msg => msg.role !== 'system');
+  
+  // Gemini expects roles: 'user' and 'model'
+  // If the dialogue hasn't started with a user message, we'll handle it in the caller
+  const firstUserIdx = filtered.findIndex(m => m.role === 'user');
+  if (firstUserIdx === -1) return [];
+
+  return filtered.slice(firstUserIdx).map(msg => {
+    const parts: any[] = [{ text: msg.content || (msg.image ? "Analyzie the door in this image." : "Show me the door.") }];
+    if (msg.image) {
+      const base64Data = msg.image.includes(',') ? msg.image.split(',')[1] : msg.image;
+      parts.push({
+        inlineData: {
+          data: base64Data,
+          mimeType: "image/jpeg"
+        }
+      });
+    }
+    return {
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts
+    };
+  });
+}
+
+export async function askGilly(history: ChatMessage[]) {
   const model = "gemini-3-flash-preview";
   
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("Missing GEMINI_API_KEY");
   }
 
-  const contents = imageBase64 ? {
-    parts: [
-      { text: prompt },
-      { inlineData: { data: imageBase64, mimeType: "image/jpeg" } }
-    ]
-  } : prompt;
+  const contents = formatHistory(history);
+  if (contents.length === 0) return "Hey there! How can I help you in the field today?";
 
   const response = await ai.models.generateContent({
     model,
     contents,
-    config: { systemInstruction: GILLY_SYSTEM_PROMPT }
+    config: {
+      systemInstruction: GILLY_SYSTEM_PROMPT
+    }
   });
-  return response.text;
+
+  return response.text || "I'm having a bit of trouble finding the words. Try asking again?";
 }
 
-export async function* askGillyStream(prompt: string, imageBase64?: string) {
+export async function* askGillyStream(history: ChatMessage[]) {
   const model = "gemini-3-flash-preview";
   
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("Missing GEMINI_API_KEY");
   }
 
-  const contents = imageBase64 ? {
-    parts: [
-      { text: prompt },
-      { inlineData: { data: imageBase64, mimeType: "image/jpeg" } }
-    ]
-  } : prompt;
+  const contents = formatHistory(history);
+  
+  if (contents.length === 0) {
+    yield "Hey there! How can I help you in the field today?";
+    return;
+  }
 
   const responseStream = await ai.models.generateContentStream({
     model,
     contents,
-    config: { systemInstruction: GILLY_SYSTEM_PROMPT }
+    config: {
+      systemInstruction: GILLY_SYSTEM_PROMPT
+    }
   });
 
   for await (const chunk of responseStream) {

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Send, Camera, User, Bot, Loader2, Sparkles, X, Mic, MicOff, Cog, Radio, Eye, Scale, Activity } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { askGilly, askGillyStream } from '../lib/gemini';
+import { askGillyStream, ChatMessage, GILLY_SYSTEM_PROMPT } from '../lib/gemini';
 import { cn } from '../lib/utils';
 import confetti from 'canvas-confetti';
 
@@ -14,8 +14,11 @@ interface Message {
 
 export default function GillyChat() {
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hey there! I\'m Gilly. "You\'ve got door problems, I got door solutions." How can I help you in the field today? You can even show me a photo of a problem door!' }
+  
+  // Use session-based state. React state is reset on page refresh.
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: 'system', content: GILLY_SYSTEM_PROMPT },
+    { role: 'assistant', content: 'Hey there! I\'m Gilly. "You\'ve got door problems, I\'ve got door solutions." How can I help you in the field today? You can even show me a photo of a problem door!' }
   ]);
   const [loading, setLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -62,32 +65,50 @@ export default function GillyChat() {
   const handleSend = async () => {
     if ((!input.trim() && !selectedImage) || loading) return;
 
-    const userMsg: Message = { 
+    const userMsg: ChatMessage = { 
       role: 'user', 
       content: input, 
       image: selectedImage || undefined 
     };
     
-    const assistantMsg: Message = { role: 'assistant', content: '' };
-    setMessages(prev => [...prev, userMsg, assistantMsg]);
+    const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
+    
+    // Calculate new history and update state
+    const nextHistory = [...messages, userMsg, assistantMsg];
+    let limitedHistory = nextHistory;
+    if (nextHistory.length > 20) {
+      // Keep system prompt (index 0) and most recent 19 messages
+      limitedHistory = [nextHistory[0], ...nextHistory.slice(nextHistory.length - 19)];
+    }
+    
+    setMessages(limitedHistory);
+    
+    const currentInput = input;
+    const currentImage = selectedImage;
+    
     setInput('');
     setSelectedImage(null);
     setLoading(true);
 
     try {
-      const base64 = userMsg.image?.split(',')[1];
       let fullResponse = '';
       
-      const stream = askGillyStream(userMsg.content || "Look at this photo and tell me what's wrong.", base64);
+      // Send history up to the user message (excluding the empty assistant response being generated)
+      const historyToSend = limitedHistory.slice(0, -1);
+      const stream = askGillyStream(historyToSend);
       
       for await (const chunk of stream) {
         fullResponse += chunk;
         setMessages(prev => {
           const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = { 
-            role: 'assistant', 
-            content: fullResponse 
-          };
+          const lastIdx = newMessages.length - 1;
+          // Ensure we only update if the last message is an assistant message
+          if (newMessages[lastIdx].role === 'assistant') {
+            newMessages[lastIdx] = { 
+              role: 'assistant', 
+              content: fullResponse 
+            };
+          }
           return newMessages;
         });
       }
@@ -153,7 +174,7 @@ export default function GillyChat() {
 
       {/* Chat Area */}
       <div className="flex-1 overflow-y-auto space-y-4 px-1 pb-4 scrollbar-hide">
-        {messages.length === 1 && (
+        {messages.filter(m => m.role !== 'system').length === 1 && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -173,7 +194,7 @@ export default function GillyChat() {
             ))}
           </motion.div>
         )}
-        {messages.map((msg, i) => (
+        {messages.filter(m => m.role !== 'system').map((msg, i) => (
           <div key={i} className={cn("flex w-full", msg.role === 'user' ? "justify-end" : "justify-start")}>
             <div className={cn(
               "max-w-[85%] rounded-2xl p-4 shadow-xl",

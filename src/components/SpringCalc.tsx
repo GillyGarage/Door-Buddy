@@ -15,7 +15,10 @@ import {
   Info,
   ChevronDown,
   Wrench,
-  Compass
+  Compass,
+  Plus,
+  Minus,
+  Clock
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { 
@@ -23,19 +26,32 @@ import {
   CalculationInput, 
   DRUMS, 
   findBestSpringForCycles,
-  WIRE_COLORS
+  getUpcycleOptions,
+  WIRE_COLORS,
+  calculatePhysicalIppt,
+  calculateSpringMetrics,
+  WIRE_DIAMETERS,
+  INNER_DIAMETERS
 } from '../lib/springMath';
 
 export default function SpringCalc() {
-  const [subTab, setSubTab] = useState<'menu' | 'engineering'>('menu');
-  const [input, setInput] = useState<CalculationInput>({
+  const [subTab, setSubTab] = useState<'menu' | 'engineering' | 'conversion'>('menu');
+  const [input, setInput] = useState<CalculationInput & { assembly: string, cycles: number, doorWidthFt: number, doorWidthIn: number, doorHeightFt: number, doorHeightIn: number, targetId: number }>({
     doorWidth: 16,
+    doorWidthFt: 16,
+    doorWidthIn: 0,
     doorHeight: 7,
+    doorHeightFt: 7,
+    doorHeightIn: 0,
     doorWeight: 140,
     liftSystem: 'standard',
-    drumType: 'D400-96',
+    drumType: '400-8 (Std)',
     trackRadius: '12',
-    highLiftInches: 0
+    highLiftInches: 0,
+    assembly: 'Single',
+    cycles: 10000,
+    pitch: 0,
+    targetId: 2.0
   });
 
   const [notes, setNotes] = useState(() => {
@@ -43,7 +59,46 @@ export default function SpringCalc() {
   });
 
   const [springCount, setSpringCount] = useState(2);
+  
+  // New unified conversion state
+  const [setupCurrent, setSetupCurrent] = useState({ count: 1, wire: 0.218, id: 2.0, length: 25 });
+  const [setupReplace, setSetupReplace] = useState({ count: 1, wire: 0.218, id: 2.0, length: 25 });
+  const [isMismatched, setIsMismatched] = useState(false);
   const [selectedSpring, setSelectedSpring] = useState<any>(null);
+
+  const metricsCurrent = useMemo(() => 
+    calculateSpringMetrics(setupCurrent.wire, setupCurrent.id, setupCurrent.length, setupCurrent.count),
+    [setupCurrent]
+  );
+
+  const metricsReplace = useMemo(() => 
+    calculateSpringMetrics(setupReplace.wire, setupReplace.id, setupReplace.length, setupReplace.count),
+    [setupReplace]
+  );
+
+  // Sync decimal dimensions whenever ft/in change
+  React.useEffect(() => {
+    setInput(prev => ({
+      ...prev,
+      doorWidth: prev.doorWidthFt + (prev.doorWidthIn / 12),
+      doorHeight: prev.doorHeightFt + (prev.doorHeightIn / 12)
+    }));
+  }, [input.doorWidthFt, input.doorWidthIn, input.doorHeightFt, input.doorHeightIn]);
+
+  const filteredDrums = useMemo(() => {
+    return Object.entries(DRUMS).filter(([_, drum]) => {
+      if (input.liftSystem === 'high-lift') return drum.isHighLift;
+      if (input.liftSystem === 'vertical-lift') return drum.isVerticalLift;
+      return !drum.isHighLift && !drum.isVerticalLift;
+    });
+  }, [input.liftSystem]);
+
+  const isSetupComplete = useMemo(() => {
+    return input.drumType !== '' && input.doorWeight > 0;
+  }, [input.drumType, input.doorWeight]);
+
+  const results = useMemo(() => calculateTorsionSprings(input), [input]);
+  const ipptPerSpring = results.ippt / springCount;
 
   const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -51,27 +106,82 @@ export default function SpringCalc() {
     localStorage.setItem('gilly_spring_notes', val);
   };
 
-  const results = useMemo(() => calculateTorsionSprings(input), [input]);
-  const ipptPerSpring = results.ippt / springCount;
+  const activeBaselineIppt = useMemo(() => {
+    if (subTab === 'conversion') return metricsCurrent.totalIppt;
+    return results.ippt;
+  }, [subTab, metricsCurrent.totalIppt, results.ippt]);
 
-  const cycleOptions = useMemo(() => [
-    { label: '10,000 Cycles', value: 10000, color: 'text-blue-500', bg: 'bg-blue-50/50' },
-    { label: '20,000 Cycles', value: 20000, color: 'text-green-500', bg: 'bg-green-50/50' },
-    { label: '50,000 Cycles', value: 50000, color: 'text-purple-500', bg: 'bg-purple-50/50' },
-  ], []);
+  const upcycleOptions = useMemo(() => {
+    if (!isSetupComplete) return [];
+    return getUpcycleOptions(ipptPerSpring, results.torque / springCount, results.turns);
+  }, [isSetupComplete, ipptPerSpring, results.torque, results.turns, springCount]);
 
-  const tierSprings = useMemo(() => {
-    return cycleOptions.map(opt => ({
-      ...opt,
-      spring: findBestSpringForCycles(ipptPerSpring, opt.value, results.torque / springCount, results.turns)
-    }));
-  }, [ipptPerSpring, results.torque, results.turns, springCount, cycleOptions]);
+  const bestOption = useMemo(() => {
+    if (!upcycleOptions.length) return null;
+    
+    // Pick the best match for user's selected target cycles
+    const match = upcycleOptions.find(o => o.cycles >= input.cycles);
+    return match || upcycleOptions[upcycleOptions.length - 1];
+  }, [upcycleOptions, input.cycles]);
+
+  const SimpleResultTable = ({ option, turns }: { option: any, turns: number }) => {
+    if (!option) return null;
+    const isLowCycle = option.cycles < 10000;
+    
+    return (
+      <div className={cn(
+        "bg-zinc-900/50 rounded-[32px] border overflow-hidden shadow-2xl transition-all",
+        isLowCycle ? "border-red-500/50" : "border-white/5"
+      )}>
+        <div className="grid grid-cols-3 bg-zinc-900 border-b border-white/5 px-6 py-4">
+          <div className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Spring Spec</div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-zinc-500 text-center">Cycle Life</div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-zinc-500 text-right">Turns Req.</div>
+        </div>
+        <div className={cn(
+          "px-6 py-6 items-center grid grid-cols-3",
+          isLowCycle ? "bg-red-500/5" : "bg-brand-accent/[0.03]"
+        )}>
+          <div className="text-sm font-black text-zinc-300 italic">
+            {option.wire}" x {option.id}" x {option.length}"
+          </div>
+          <div className="text-center">
+            <div className={cn(
+              "text-sm font-black italic",
+              isLowCycle ? "text-red-500" : "text-white"
+            )}>
+              {option.cycles.toLocaleString()}
+            </div>
+            <div className="text-[7px] font-bold text-zinc-600 uppercase tracking-widest">Est. Cycles</div>
+          </div>
+          <div className="text-right">
+            <div className="text-sm font-black text-brand-accent italic">{turns.toFixed(1)}</div>
+            <div className="text-[7px] font-bold text-zinc-500 uppercase tracking-widest">Full Turns</div>
+          </div>
+        </div>
+        <div className={cn(
+          "px-6 py-3 border-t border-white/5",
+          isLowCycle ? "bg-red-500/20" : "bg-brand-accent/10"
+        )}>
+           <p className={cn(
+             "text-[8px] font-black uppercase tracking-widest italic text-center animate-pulse",
+             isLowCycle ? "text-red-500" : "text-brand-accent"
+           )}>
+             {isLowCycle 
+               ? "Warning: Under 10k Cycles - Do Not Install" 
+               : `Professional Engineering Match for ${option.cycles.toLocaleString()} cycles`
+             }
+           </p>
+        </div>
+      </div>
+    );
+  };
 
   const menuItems = [
-    { label: 'Spring Conversion', icon: RefreshCw },
-    { label: 'Spring Engineering', icon: Settings2, active: true },
-    { label: 'Rolling Steel', icon: Menu },
-    { label: 'Weight Calculator', icon: Scale },
+    { id: 'conversion', label: 'SPRING CONVERSION', icon: RefreshCw, active: true },
+    { id: 'engineering', label: 'Spring Engineering', icon: Settings2, active: true },
+    { id: 'rolling', label: 'Rolling Steel', icon: Menu },
+    { id: 'weight', label: 'Weight Calculator', icon: Scale },
   ];
 
   if (subTab === 'menu') {
@@ -82,7 +192,31 @@ export default function SpringCalc() {
            {menuItems.map((item) => (
              <button
                key={item.label}
-               onClick={() => item.active && setSubTab('engineering')}
+                onClick={() => {
+                  if (item.active) {
+                    if (item.id === 'engineering') {
+                      setInput({
+                        doorWidth: 16,
+                        doorWidthFt: 16,
+                        doorWidthIn: 0,
+                        doorHeight: 7,
+                        doorHeightFt: 7,
+                        doorHeightIn: 0,
+                        doorWeight: 140,
+                        liftSystem: 'standard',
+                        drumType: '400-8 (Std)',
+                        trackRadius: '12',
+                        highLiftInches: 0,
+                        assembly: 'Single',
+                        cycles: 10000,
+                        pitch: 0,
+                        targetId: 2.0
+                      });
+                      setSpringCount(2);
+                    }
+                    setSubTab(item.id as any);
+                  }
+                }}
                className={cn(
                  "flex flex-col items-center justify-center aspect-square p-6 transition-all active:scale-[0.95] group",
                  item.active ? "bg-brand-accent text-white shadow-xl shadow-brand-accent/20" : "bg-zinc-900 text-zinc-500 hover:text-brand-accent"
@@ -97,340 +231,521 @@ export default function SpringCalc() {
     );
   }
 
+  if (subTab === 'conversion') {
+    return (
+      <div className="bg-zinc-950 min-h-screen -mx-4 -mt-20 pt-16 transition-all text-zinc-100 pb-32">
+        <div className="bg-zinc-900 py-4 px-6 flex items-center justify-between sticky top-0 z-20 border-b border-white/5 shadow-2xl">
+          <button onClick={() => setSubTab('menu')} className="text-white hover:opacity-70 transition-opacity">
+            <ChevronLeft className="w-7 h-7" />
+          </button>
+          <h2 className="font-bold text-white uppercase text-base tracking-tight italic">Spring Conversion</h2>
+          <div className="w-10" />
+        </div>
+
+        <div className="space-y-4">
+          {/* CURRENT SETUP */}
+          <div className="bg-zinc-900/50">
+             <div className="bg-zinc-900 px-6 py-3 flex items-center justify-between border-y border-white/5">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Current Setup</span>
+                <div className="flex items-center gap-2">
+                   <span className="text-[9px] font-bold text-zinc-600 uppercase">Mismatched</span>
+                   <div className="flex bg-zinc-950 border border-white/5 rounded-lg p-0.5">
+                      <button 
+                        onClick={() => setIsMismatched(false)}
+                        className={cn(
+                          "px-3 py-1 text-[8px] font-black uppercase rounded transition-all",
+                          !isMismatched ? "bg-brand-accent text-white" : "text-zinc-500"
+                        )}
+                      >
+                        No
+                      </button>
+                      <button 
+                        onClick={() => setIsMismatched(true)}
+                        className={cn(
+                          "px-3 py-1 text-[8px] font-black uppercase rounded transition-all",
+                          isMismatched ? "bg-brand-accent text-white" : "text-zinc-500"
+                        )}
+                      >
+                        Yes
+                      </button>
+                   </div>
+                </div>
+             </div>
+
+             <div className="divide-y divide-white/5">
+                <div className="px-6 py-4 flex items-center justify-between">
+                   <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Springs</span>
+                   <div className="flex gap-1">
+                      {[1, 2, 3, 4].map(n => (
+                         <button 
+                           key={n}
+                           onClick={() => setSetupCurrent({...setupCurrent, count: n})}
+                           className={cn(
+                             "w-8 h-8 rounded-lg font-black text-xs transition-all",
+                             setupCurrent.count === n ? "bg-brand-accent text-white shadow-lg" : "bg-zinc-900/50 text-zinc-600"
+                           )}
+                         >
+                           {n}
+                         </button>
+                      ))}
+                   </div>
+                </div>
+                
+                <div className="px-6 py-4 flex items-center justify-between">
+                   <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Spring ID (in)</span>
+                   <select 
+                      value={setupCurrent.id}
+                      onChange={(e) => setSetupCurrent({...setupCurrent, id: Number(e.target.value)})}
+                      className="bg-transparent text-sm font-black text-white outline-none appearance-none pr-4 text-right"
+                   >
+                      {INNER_DIAMETERS.map(id => <option key={id} value={id} className="bg-zinc-900">{id.toFixed(3)}"</option>)}
+                   </select>
+                </div>
+
+                <div className="px-6 py-4 flex items-center justify-between">
+                   <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Wire Size (in)</span>
+                   <select 
+                      value={setupCurrent.wire}
+                      onChange={(e) => setSetupCurrent({...setupCurrent, wire: Number(e.target.value)})}
+                      className="bg-transparent text-sm font-black text-white outline-none appearance-none pr-4 text-right"
+                   >
+                      {WIRE_DIAMETERS.map(wire => <option key={wire} value={wire} className="bg-zinc-900">{wire.toFixed(3)}"</option>)}
+                   </select>
+                </div>
+
+                <div className="px-6 py-4 flex items-center justify-between">
+                   <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Spring Length (in)</span>
+                   <input 
+                      type="number"
+                      value={setupCurrent.length}
+                      onChange={(e) => setSetupCurrent({...setupCurrent, length: Number(e.target.value)})}
+                      className="bg-transparent text-sm font-black text-white outline-none text-right w-20"
+                   />
+                </div>
+             </div>
+
+             {/* Metrics Grid Current */}
+             <div className="grid grid-cols-2 gap-px bg-white/5 border-t border-white/5">
+                <MetricBox label="Max Turns" value={metricsCurrent.maxTurns.toFixed(2)} color="text-green-500" />
+                <MetricBox label="IPPT" value={metricsCurrent.ippt.toFixed(2)} color="text-green-500" />
+                <MetricBox label="Active Coils" value={metricsCurrent.activeCoils.toFixed(0)} color="text-green-500" />
+                <MetricBox label="Total Coils" value={metricsCurrent.totalCoils.toFixed(0)} color="text-green-500" />
+                <MetricBox label="Weight" value={metricsCurrent.weight.toFixed(1) + ' lbs'} color="text-green-500" />
+                <MetricBox label="Cycles" value={metricsCurrent.cycles.toLocaleString()} color="text-green-500" />
+             </div>
+          </div>
+
+          {/* REPLACEMENT SETUP */}
+          <div className="bg-zinc-900/50">
+             <div className="bg-brand-accent p-1 text-center">
+                <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white">Replacement Setup</span>
+             </div>
+
+             <div className="divide-y divide-white/5">
+                <div className="px-6 py-4 flex items-center justify-between">
+                   <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Springs</span>
+                   <div className="flex gap-1">
+                      {[1, 2, 3, 4].map(n => (
+                         <button 
+                           key={n}
+                           onClick={() => setSetupReplace({...setupReplace, count: n})}
+                           className={cn(
+                             "w-8 h-8 rounded-lg font-black text-xs transition-all",
+                             setupReplace.count === n ? "bg-brand-accent text-white shadow-lg" : "bg-zinc-900/50 text-zinc-600"
+                           )}
+                         >
+                           {n}
+                         </button>
+                      ))}
+                   </div>
+                </div>
+
+                <div className="px-6 py-4 flex items-center justify-between">
+                   <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Spring ID (in)</span>
+                   <select 
+                      value={setupReplace.id}
+                      onChange={(e) => setSetupReplace({...setupReplace, id: Number(e.target.value)})}
+                      className="bg-transparent text-sm font-black text-white outline-none appearance-none pr-4 text-right"
+                   >
+                      {INNER_DIAMETERS.map(id => <option key={id} value={id} className="bg-zinc-900">{id.toFixed(3)}"</option>)}
+                   </select>
+                </div>
+
+                <div className="px-6 py-4 flex items-center justify-between">
+                   <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Wire Size (in)</span>
+                   <div className="flex items-center gap-4">
+                      <button 
+                        onClick={() => {
+                           const idx = WIRE_DIAMETERS.indexOf(setupReplace.wire);
+                           if (idx > 0) setSetupReplace({...setupReplace, wire: WIRE_DIAMETERS[idx - 1]});
+                        }}
+                        className="bg-brand-accent p-2 rounded-lg hover:opacity-80 active:scale-95 transition-all text-white shadow-lg shadow-brand-accent/20"
+                      >
+                         <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="text-sm font-black text-white w-16 text-center tabular-nums">{setupReplace.wire.toFixed(3)}"</span>
+                      <button 
+                        onClick={() => {
+                           const idx = WIRE_DIAMETERS.indexOf(setupReplace.wire);
+                           if (idx < WIRE_DIAMETERS.length - 1) setSetupReplace({...setupReplace, wire: WIRE_DIAMETERS[idx + 1]});
+                        }}
+                        className="bg-brand-accent p-2 rounded-lg hover:opacity-80 active:scale-95 transition-all text-white shadow-lg shadow-brand-accent/20"
+                      >
+                         <Plus className="w-3.5 h-3.5" />
+                      </button>
+                   </div>
+                </div>
+
+                <div className="px-6 py-4 flex items-center justify-between group">
+                   <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Spring Length</span>
+                   <div className="flex flex-col items-end">
+                      <span className="text-sm font-black text-green-500 animate-pulse">
+                         {((metricsCurrent.totalIppt) / (setupReplace.count * calculatePhysicalIppt(setupReplace.wire, setupReplace.id, 1))).toFixed(2)}"
+                      </span>
+                      <span className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mt-1">Calculated Fit</span>
+                   </div>
+                </div>
+             </div>
+
+             {/* Metrics Grid Replace */}
+             <div className="grid grid-cols-2 gap-px bg-white/5 border-t border-white/5">
+                <MetricBox label="Max Turns" value={metricsReplace.maxTurns.toFixed(2)} color="text-green-500" />
+                <MetricBox label="IPPT" value={metricsReplace.ippt.toFixed(2)} color="text-green-500" />
+                <MetricBox label="Active Coils" value={metricsReplace.activeCoils.toFixed(0)} color="text-green-500" />
+                <MetricBox label="Total Coils" value={metricsReplace.totalCoils.toFixed(0)} color="text-green-500" />
+                <MetricBox label="Weight" value={metricsReplace.weight.toFixed(1) + ' lbs'} color="text-green-500" />
+                <MetricBox label="Cycles" value={metricsReplace.cycles.toLocaleString()} color="text-green-500" />
+             </div>
+          </div>
+
+          {/* DNA Section (Moved to Bottom) */}
+          <div className="px-6 space-y-4">
+             <div className="bg-zinc-900 border border-white/5 p-4 rounded-2xl flex items-center justify-between opacity-50">
+                <div className="flex items-center gap-3">
+                   <Zap className="w-4 h-4 text-brand-accent" />
+                   <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Baseline DNA: {activeBaselineIppt.toFixed(2)} IPPT</span>
+                </div>
+                <Info className="w-4 h-4 text-zinc-700" />
+             </div>
+
+             <div className="grid grid-cols-2 gap-4">
+                <button className="py-4 bg-zinc-900 border border-white/5 text-[10px] font-black uppercase tracking-widest text-white rounded-2xl active:scale-95 transition-all">
+                   Min Door Width
+                </button>
+                <button 
+                  onClick={() => {
+                    setSetupCurrent({ count: 1, wire: 0.218, id: 2.0, length: 25 });
+                    setSetupReplace({ count: 1, wire: 0.218, id: 2.0, length: 25 });
+                  }}
+                  className="py-4 bg-zinc-900 border border-white/5 text-[10px] font-black uppercase tracking-widest text-white rounded-2xl active:scale-95 transition-all"
+                >
+                   Clear
+                </button>
+             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+function MetricBox({ label, value, color }: { label: string, value: string, color: string }) {
   return (
-    <div className="bg-zinc-950 min-h-screen -mx-4 -mt-20 pt-16 transition-all text-zinc-100">
+    <div className="bg-zinc-900 px-6 py-4 flex items-center justify-between">
+      <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-tight">{label}</span>
+      <span className={cn("text-xs font-black italic", color)}>{value}</span>
+    </div>
+  );
+}
+
+  return (
+    <div className="bg-zinc-950 min-h-screen -mx-4 -mt-20 pt-16 transition-all text-zinc-100 pb-32">
       {/* Header Bar */}
       <div className="bg-zinc-900 py-4 px-6 flex items-center justify-between sticky top-0 z-20 border-b border-white/5 shadow-2xl">
         <button onClick={() => setSubTab('menu')} className="text-white hover:opacity-70 transition-opacity">
           <ChevronLeft className="w-7 h-7" />
         </button>
-        <h2 className="font-bold text-white uppercase text-base tracking-tight italic">Engineering Calculator</h2>
+        <h2 className="font-bold text-white uppercase text-base tracking-tight italic">Spring Engineering</h2>
         <div className="w-10" />
       </div>
 
-      <div className="bg-[#444] py-2 px-6 flex justify-between items-center border-t border-white/10">
-        <h3 className="text-white text-[10px] font-black uppercase tracking-[0.2em]">Live Door Analysis</h3>
-        <Zap className="w-3 h-3 text-brand-accent animate-pulse" />
-      </div>
-
-      <div className="divide-y divide-white/5 bg-zinc-950">
-        {/* Lift System Selection */}
-        <div className="px-6 py-4 flex items-center justify-between group">
-          <div className="flex items-center gap-2">
-            <ArrowRightLeft className="w-4 h-4 text-zinc-500" />
-            <label className="text-sm font-medium text-zinc-500 uppercase tracking-tight">Lift System</label>
-          </div>
-          <select 
-            value={input.liftSystem}
-            onChange={(e) => setInput({ ...input, liftSystem: e.target.value as any })}
-            className="appearance-none bg-transparent outline-none font-black text-sm text-right pr-6 text-white"
-          >
-            <option value="standard" className="bg-zinc-900">Standard Lift</option>
-            <option value="high-lift" className="bg-zinc-900">High Lift</option>
-            <option value="vertical-lift" className="bg-zinc-900">Vertical Lift</option>
-            <option value="extension" className="bg-zinc-900">Extension</option>
-          </select>
-          <ChevronDown className="w-4 h-4 -ml-6 pointer-events-none text-zinc-600" />
+      <div className="bg-zinc-900/50">
+        {/* CURRENT SETUP HEADER */}
+        <div className="bg-zinc-900 px-6 py-3 border-y border-white/5">
+           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Current Setup</span>
         </div>
 
-        {/* Pitch Selection (FTR) */}
-        {input.liftSystem === 'standard' && (
-          <div className="px-6 py-4 flex items-center justify-between group bg-amber-500/5 animate-in fade-in slide-in-from-top-1">
-            <div className="flex items-center gap-2">
-              <Compass className="w-4 h-4 text-amber-500" />
-              <label className="text-sm font-medium text-amber-500 uppercase tracking-tight italic">Roof Pitch (FTR)</label>
+        <div className="divide-y divide-white/5 bg-zinc-950">
+          {/* Assembly */}
+          <div className="px-6 py-4 flex items-center justify-between">
+            <label className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Assembly</label>
+            <select 
+              value={input.assembly}
+              onChange={(e) => setInput({...input, assembly: e.target.value})}
+              className="bg-transparent text-sm font-black text-white outline-none appearance-none pr-4 text-right"
+            >
+               <option value="Single" className="bg-zinc-900">Single</option>
+               <option value="Duplex" className="bg-zinc-900">Duplex</option>
+               <option value="Triplex" className="bg-zinc-900">Triplex</option>
+            </select>
+          </div>
+
+          {/* Springs Segmented */}
+          <div className="px-6 py-4 flex items-center justify-between">
+             <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Springs</span>
+             <div className="flex gap-1">
+                {[1, 2, 3, 4].map(n => (
+                   <button 
+                     key={n}
+                     onClick={() => setSpringCount(n)}
+                     className={cn(
+                       "w-8 h-8 rounded-lg font-black text-xs transition-all",
+                       springCount === n ? "bg-brand-accent text-white shadow-lg" : "bg-zinc-900/50 text-zinc-600"
+                     )}
+                   >
+                     {n}
+                   </button>
+                ))}
+             </div>
+          </div>
+
+          {/* Spring ID */}
+          <div className="px-6 py-4 flex items-center justify-between">
+             <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Spring ID</span>
+             <select 
+                value={input.targetId}
+                onChange={(e) => setInput({...input, targetId: Number(e.target.value)})}
+                className="bg-transparent text-sm font-black text-white outline-none appearance-none pr-4 text-right"
+             >
+                {INNER_DIAMETERS.map(id => <option key={id} value={id} className="bg-zinc-900">{id.toFixed(3)}"</option>)}
+             </select>
+          </div>
+
+          {/* Cycles */}
+          <div className="px-6 py-4 flex items-center justify-between">
+             <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Cycles</span>
+             <select 
+                value={input.cycles}
+                onChange={(e) => setInput({...input, cycles: Number(e.target.value)})}
+                className="bg-transparent text-sm font-black text-white outline-none appearance-none pr-4 text-right"
+             >
+                {[10000, 15000, 20000, 25000, 30000, 50000].map(c => (
+                  <option key={c} value={c} className="bg-zinc-900">{c.toLocaleString()}</option>
+                ))}
+             </select>
+          </div>
+        </div>
+
+        {/* Gray Spacer */}
+        <div className="h-4 bg-zinc-900/50" />
+
+        <div className="divide-y divide-white/5 bg-zinc-950">
+          {/* Lift Type */}
+          <div className="px-6 py-4 flex items-center justify-between">
+            <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Lift Type</span>
+            <select 
+              value={input.liftSystem}
+              onChange={(e) => setInput({ ...input, liftSystem: e.target.value as any })}
+              className="appearance-none bg-transparent outline-none font-black text-sm text-right pr-4 text-white"
+            >
+              <option value="standard" className="bg-zinc-900">Standard</option>
+              <option value="high-lift" className="bg-zinc-900">High Lift</option>
+              <option value="vertical-lift" className="bg-zinc-900">Vertical Lift</option>
+            </select>
+          </div>
+
+          {/* Radius Segmented */}
+          <div className="px-6 py-4 flex items-center justify-between">
+            <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Radius</span>
+            <div className="flex flex-wrap justify-end gap-1 max-w-[200px]">
+              {['15', '12', '20', '32', 'LHR'].map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setInput({ ...input, trackRadius: r })}
+                  className={cn(
+                    "px-3 h-8 flex items-center justify-center text-[10px] font-black transition-all rounded-lg uppercase tracking-tighter",
+                    input.trackRadius === r ? "bg-brand-accent text-white shadow-lg" : "bg-zinc-900 text-zinc-500 hover:text-zinc-300"
+                  )}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Drum Selection */}
+          <div className="px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-1">
+               <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Drum</span>
+               <Info className="w-3 h-3 text-zinc-700" />
             </div>
             <select 
-              value={input.pitch || 0}
-              onChange={(e) => setInput({ ...input, pitch: Number(e.target.value) })}
-              className="appearance-none bg-transparent outline-none font-black text-sm text-right pr-6 text-amber-500"
+              value={input.drumType}
+              onChange={(e) => setInput({ ...input, drumType: e.target.value })}
+              className={cn(
+                "appearance-none bg-transparent outline-none font-black text-sm text-right pr-4",
+                input.drumType ? "text-white" : "text-red-500 underline"
+              )}
             >
-              <option value={0} className="bg-zinc-900">None (Flat)</option>
-              <option value={1} className="bg-zinc-900">1/12 Pitch</option>
-              <option value={2} className="bg-zinc-900">2/12 Pitch</option>
-              <option value={3} className="bg-zinc-900">3/12 Pitch</option>
-              <option value={4} className="bg-zinc-900">4/12 Pitch</option>
+              <option value="" className="bg-zinc-900 italic">Select a Drum</option>
+              {filteredDrums.map(([d]) => <option key={d} value={d} className="bg-zinc-900">{d}</option>)}
             </select>
-            <ChevronDown className="w-4 h-4 -ml-6 pointer-events-none text-amber-600" />
+          </div>
+
+          {/* Door Width Ft/In */}
+          <div className="px-6 py-4 flex items-center justify-between">
+            <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Door Width (in)</span>
+            <div className="flex items-center gap-2">
+               <select 
+                 value={input.doorWidthFt} 
+                 onChange={(e) => setInput({...input, doorWidthFt: Number(e.target.value)})}
+                 className="bg-transparent text-sm font-black text-white outline-none"
+               >
+                  {[...Array(31)].map((_, i) => <option key={i} value={i} className="bg-zinc-900">{i}'</option>)}
+               </select>
+               <select 
+                 value={input.doorWidthIn} 
+                 onChange={(e) => setInput({...input, doorWidthIn: Number(e.target.value)})}
+                 className="bg-transparent text-sm font-black text-white outline-none"
+               >
+                  {[0, 2, 4, 6, 8, 10].map(i => <option key={i} value={i} className="bg-zinc-900">{i}"</option>)}
+               </select>
+            </div>
+          </div>
+
+          {/* Door Height Ft/In */}
+          <div className="px-6 py-4 flex items-center justify-between">
+            <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Door Height (in)</span>
+            <div className="flex items-center gap-2">
+               <select 
+                 value={input.doorHeightFt} 
+                 onChange={(e) => setInput({...input, doorHeightFt: Number(e.target.value)})}
+                 className="bg-transparent text-sm font-black text-white outline-none"
+               >
+                  {[...Array(31)].map((_, i) => <option key={i} value={i} className="bg-zinc-900">{i}'</option>)}
+               </select>
+               <select 
+                 value={input.doorHeightIn} 
+                 onChange={(e) => setInput({...input, doorHeightIn: Number(e.target.value)})}
+                 className="bg-transparent text-sm font-black text-white outline-none"
+               >
+                  {[0, 2, 4, 6, 8, 10].map(i => <option key={i} value={i} className="bg-zinc-900">{i}"</option>)}
+               </select>
+            </div>
+          </div>
+
+          {/* Weight */}
+          <div className="px-6 py-4 flex items-center justify-between">
+            <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Weight (lb)</span>
+            <input 
+              type="number"
+              inputMode="decimal"
+              value={input.doorWeight}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setInput({ ...input, doorWeight: Number(e.target.value) })}
+              className="bg-transparent text-sm font-black text-white outline-none text-right w-20"
+            />
+          </div>
+
+          {/* Pitch Section */}
+          <div className="divide-y divide-white/5">
+            <div className="px-6 py-4 flex items-center justify-between">
+               <div className="flex items-center gap-1">
+                  <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">Roof Pitch</span>
+                  <Info className="w-3 h-3 text-zinc-700" />
+               </div>
+               <div className="flex bg-zinc-950 border border-white/5 rounded-lg p-0.5">
+                  <button 
+                    onClick={() => setInput({...input, pitch: 0})}
+                    className={cn(
+                      "px-4 py-1 text-[8px] font-black uppercase rounded transition-all",
+                      (input.pitch === 0) ? "bg-brand-accent text-white" : "text-zinc-500"
+                    )}
+                  >
+                    No
+                  </button>
+                  <button 
+                    onClick={() => setInput({...input, pitch: input.pitch || 1})}
+                    className={cn(
+                      "px-4 py-1 text-[8px] font-black uppercase rounded transition-all",
+                      (input.pitch !== 0) ? "bg-brand-accent text-white" : "text-zinc-500"
+                    )}
+                  >
+                    Yes
+                  </button>
+               </div>
+            </div>
+            
+            <AnimatePresence>
+              {input.pitch !== 0 && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="px-6 py-4 bg-zinc-900/40 overflow-hidden"
+                >
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest italic">Pitch Gradient</span>
+                    <span className="text-sm font-black text-brand-accent italic">{input.pitch || 0}/12</span>
+                  </div>
+                  <input 
+                    type="range"
+                    min="1"
+                    max="12"
+                    step="1"
+                    value={input.pitch || 1}
+                    onChange={(e) => setInput({...input, pitch: Number(e.target.value)})}
+                    className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-brand-accent mb-2"
+                  />
+                  <div className="flex justify-between text-[8px] font-bold text-zinc-600 uppercase">
+                    <span>1/12</span>
+                    <span>12/12</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Results at Bottom Moved to Recommendations */}
+
+        {isSetupComplete && (
+          <div className="p-6 space-y-6">
+             {/* Unified suggest results */}
+             <div className="space-y-6">
+                 <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">Engineering Recommendation</span>
+                  <span className="text-[8px] font-bold px-2 py-1 bg-brand-accent/10 text-brand-accent rounded uppercase italic">Precision Match</span>
+                </div>
+                
+                <SimpleResultTable option={bestOption} turns={results.turns} />
+                
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-red-500 text-center italic">
+                    Policy: If a spring cycle life is under 10k, do not put that spring on a customers door.
+                  </p>
+                </div>
+             </div>
+
+             <button 
+               onClick={() => {
+                 setInput(prev => ({ ...prev, drumType: '', doorWeight: 0 }));
+               }}
+               className="w-full py-5 bg-zinc-900 border border-white/5 text-white font-black uppercase rounded-2xl shadow-2xl active:scale-[0.98] transition-transform flex items-center justify-center gap-3 mt-4"
+             >
+               <RefreshCw className="w-4 h-4 text-brand-accent" />
+               Reset Search
+             </button>
           </div>
         )}
 
-        {/* Drum Selection */}
-        <div className="px-6 py-4 flex items-center justify-between group">
-          <div className="flex items-center gap-2">
-            <Disc className="w-4 h-4 text-zinc-500" />
-            <label className="text-sm font-medium text-zinc-500 uppercase tracking-tight">Drum Model</label>
-          </div>
-          <select 
-            value={input.drumType}
-            onChange={(e) => setInput({ ...input, drumType: e.target.value })}
-            className="appearance-none bg-transparent outline-none font-black text-sm text-right pr-6 text-white"
-          >
-            {Object.keys(DRUMS).map(d => <option key={d} value={d} className="bg-zinc-900">{d}</option>)}
-          </select>
-          <ChevronDown className="w-4 h-4 -ml-6 pointer-events-none text-zinc-600" />
-        </div>
-
-        {/* Drum Technical Info */}
-        <AnimatePresence>
-          {DRUMS[input.drumType] && (
-            <motion.div 
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="bg-brand-accent/5 overflow-hidden"
-            >
-              <div className="px-6 py-3 flex gap-4 text-[9px] font-black uppercase tracking-widest text-zinc-400">
-                <div className="flex flex-col">
-                  <span>HMA</span>
-                  <span className="text-brand-accent">{DRUMS[input.drumType].hma}"</span>
-                </div>
-                <div className="flex flex-col border-l border-white/10 pl-4">
-                  <span>LMA</span>
-                  <span className="text-brand-accent">{DRUMS[input.drumType].lma}"</span>
-                </div>
-                {DRUMS[input.drumType].multiplier && (
-                  <div className="flex flex-col border-l border-white/10 pl-4">
-                    <span>Multiplier</span>
-                    <span className="text-brand-accent">{DRUMS[input.drumType].multiplier}</span>
-                  </div>
-                )}
-                <div className="flex flex-col border-l border-white/10 pl-4">
-                  <span>Max Weight</span>
-                  <span className="text-zinc-300">{DRUMS[input.drumType].maxWeight} lbs</span>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Radius */}
-        <div className="px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Ruler className="w-4 h-4 text-zinc-500" />
-            <label className="text-sm font-medium text-zinc-500 uppercase tracking-tight">Track Radius</label>
-          </div>
-          <div className="flex bg-zinc-900 rounded-lg p-1 border border-white/5">
-            {['12', '15', 'LHR'].map((r) => (
-              <button
-                key={r}
-                onClick={() => setInput({ ...input, trackRadius: r })}
-                className={cn(
-                  "px-4 h-9 flex items-center justify-center text-[10px] font-black transition-all rounded-md uppercase tracking-tighter",
-                  input.trackRadius === r ? "bg-brand-accent text-white shadow-lg shadow-brand-accent/20" : "text-zinc-500 hover:text-zinc-300"
-                )}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Door Stats */}
-        <div className="grid grid-cols-2">
-          <div className="p-6 border-r border-white/5 space-y-1">
-             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Door Height (FT)</label>
-             <input 
-               type="number"
-               inputMode="decimal"
-               value={input.doorHeight}
-               onFocus={(e) => e.target.select()}
-               onChange={(e) => setInput({ ...input, doorHeight: Number(e.target.value) })}
-               className="text-2xl font-black outline-none w-full bg-transparent text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-             />
-          </div>
-          <div className="p-6 bg-brand-accent/5 space-y-1 group">
-             <label className="text-[10px] font-bold text-brand-accent uppercase tracking-widest group-focus-within:animate-pulse">Weight (LBS)</label>
-             <input 
-               type="number"
-               inputMode="decimal"
-               value={input.doorWeight}
-               onFocus={(e) => e.target.select()}
-               onChange={(e) => setInput({ ...input, doorWeight: Number(e.target.value) })}
-               className="text-2xl font-black text-brand-accent outline-none w-full bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-             />
-          </div>
-        </div>
-
-        {/* Spring Setup */}
-          <div className="px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wrench className="w-4 h-4 text-zinc-500" />
-            <label className="text-sm font-medium text-zinc-500 uppercase tracking-tight">Units</label>
-          </div>
-          <div className="flex gap-2">
-             {[1, 2, 4].map(n => (
-               <button 
-                 key={n}
-                 onClick={() => setSpringCount(n)}
-                 className={cn(
-                   "w-10 h-10 rounded-full font-black text-xs transition-all border-2",
-                   springCount === n ? "bg-brand-accent border-brand-accent text-white scale-110 shadow-xl shadow-brand-accent/20" : "border-white/5 text-zinc-600"
-                 )}
-               >
-                 {n}
-               </button>
-             ))}
-          </div>
-        </div>
-
-        <div className="h-4 bg-zinc-900/50" />
-
-        {/* Calculation Table */}
-        <div className="p-6 space-y-6">
-          <div className="flex items-center justify-between">
-             <h4 className="font-black text-xs uppercase tracking-widest italic text-zinc-600">Calculated Results</h4>
-             <span className="text-[9px] font-bold px-2 py-1 bg-brand-accent/10 text-brand-accent rounded uppercase">Precision Match</span>
-          </div>
-
-          <div className="bg-zinc-900 rounded-3xl p-8 relative overflow-hidden shadow-2xl border border-white/5">
-             <div className="absolute -top-10 -right-10 w-40 h-40 bg-brand-accent rounded-full blur-[80px] opacity-10" />
-             
-             <div className="relative z-10 grid grid-cols-2 gap-8">
-                <div className="space-y-1">
-                   <span className="text-[10px] font-black uppercase text-white/30 tracking-widest">Total IPPT</span>
-                   <div className="text-4xl font-black text-brand-accent tracking-tighter tabular-nums italic">
-                     {results.ippt.toFixed(1)}
-                   </div>
-                </div>
-                <div className="text-right space-y-1">
-                   <span className="text-[10px] font-black uppercase text-white/30 tracking-widest">Winding Turns</span>
-                   <div className="text-4xl font-black text-white italic">
-                     {results.turns?.toFixed(1)}
-                   </div>
-                </div>
+        {!isSetupComplete && (
+          <div className="p-12 text-center space-y-4 opacity-40">
+             <div className="w-16 h-16 rounded-full bg-zinc-900 border border-white/5 mx-auto flex items-center justify-center">
+                <Settings2 className="w-8 h-8 text-zinc-700" />
              </div>
-
-             <div className="mt-8 border-t border-white/5 pt-6 grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                   <span className="text-[9px] font-bold text-white/20 uppercase">IPPT / Spring</span>
-                   <div className="text-xl font-black text-white">{(results.ippt / springCount).toFixed(2)}</div>
-                </div>
-                <div className="text-right space-y-1">
-                   <span className="text-[9px] font-bold text-white/20 uppercase">Total Torque</span>
-                   <div className="text-xl font-black text-white uppercase tracking-tighter leading-none">
-                     {results.torque?.toFixed(0)} <span className="text-[10px] opacity-30">in-lb</span>
-                   </div>
-                </div>
-             </div>
-
-             <div className="mt-8 border-t border-white/5 pt-6 grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                   <span className="text-[9px] font-bold text-brand-accent/50 uppercase tracking-widest">Cable Cut</span>
-                   <div className="text-xl font-black text-brand-accent italic">
-                     {results.cableLength ? `${results.cableLength}"` : '--'}
-                   </div>
-                </div>
-                <div className="text-right space-y-1">
-                   <span className="text-[9px] font-bold text-brand-accent/50 uppercase tracking-widest">Growth Factor</span>
-                   <div className="text-xl font-black text-brand-accent italic tabular-nums">
-                     {results.springGrowth ? `+${results.springGrowth.toFixed(2)}"` : 'TBD'}
-                   </div>
-                </div>
-             </div>
+             <p className="text-sm font-black uppercase tracking-widest text-zinc-600 italic">Complete current setup<br/>to view analysis</p>
           </div>
-        </div>
-
-        {/* Suggested Springs Section (Cycle Tiers) */}
-        <div className="p-6 bg-zinc-900/30 space-y-6 text-zinc-100">
-          <div className="flex items-center justify-between">
-             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Technician Notes</label>
-             <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-600 uppercase">
-               Field Observations
-             </div>
-          </div>
-          <div className="relative">
-            <textarea
-              value={notes}
-              onChange={handleNotesChange}
-              placeholder="Record specific measurements, site conditions, or special bracket needs..."
-              className="w-full h-32 bg-zinc-900/50 border border-white/5 rounded-2xl p-4 text-sm font-medium outline-none focus:border-brand-accent/50 transition-colors placeholder:text-zinc-700 resize-none"
-            />
-            <div className="absolute bottom-3 right-4 flex items-center gap-2 opacity-30 pointer-events-none">
-              <span className="text-[8px] font-bold uppercase tracking-widest leading-none">Auto-Saving</span>
-              <Sparkles className="w-2.5 h-2.5" />
-            </div>
-          </div>
-        </div>
-
-        {/* Suggested Springs Section (Cycle Tiers) */}
-        <div className="p-6 bg-zinc-900/30 space-y-6">
-          <div className="flex items-center justify-between">
-             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Precision Selection Tiers</label>
-             <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-600 uppercase">
-               DASMA Standard
-             </div>
-          </div>
-          
-          <div className="space-y-4">
-             {tierSprings.map((tier, idx) => (
-                <div key={tier.label} className={cn("rounded-3xl p-5 border transition-all relative overflow-hidden bg-zinc-900", tier.spring ? "border-white/5 shadow-xl" : "border-dashed border-white/5 opacity-50")}>
-                   <div className="flex justify-between items-start mb-4">
-                      <span className={cn("text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-zinc-800 border border-white/5 shadow-sm", tier.color)}>
-                        {tier.label}
-                      </span>
-                      {tier.spring && (
-                         <div className="flex items-center gap-1.5">
-                           <div className="px-2 py-0.5 rounded bg-brand-accent text-white text-[8px] font-black uppercase tracking-tighter shadow-xl">Best Value</div>
-                         </div>
-                      )}
-                   </div>
-
-                   {tier.spring ? (
-                      <div className="grid grid-cols-[1fr_auto] items-end gap-4">
-                         <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                               <div 
-                                 className="w-4 h-4 rounded-full border border-white/20 shadow-sm shadow-black/50" 
-                                 style={{ backgroundColor: WIRE_COLORS[tier.spring.wire] || '#ccc' }} 
-                               />
-                               <span className="text-xl font-black italic text-white">{tier.spring.wire}" x {tier.spring.id}"</span>
-                            </div>
-                            <div className="flex gap-4">
-                               <div className="space-y-0.5">
-                                  <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-tighter">Length</span>
-                                  <div className="text-sm font-black text-white">{tier.spring.length}"</div>
-                               </div>
-                               <div className="space-y-0.5 text-right">
-                                  <span className="text-[8px] font-bold text-zinc-500 uppercase tracking-tighter text-right block">Weight</span>
-                                  <div className="text-sm font-black italic text-white">{tier.spring.weight} <span className="text-[10px] opacity-40">LBS</span></div>
-                               </div>
-                               <div className="space-y-0.5 text-right border-l border-white/5 pl-4">
-                                  <span className="text-[8px] font-bold text-brand-accent uppercase tracking-tighter text-right block">Growth</span>
-                                  <div className="text-sm font-black italic text-brand-accent">+{tier.spring.growth}"</div>
-                               </div>
-                            </div>
-                         </div>
-                         <button 
-                           onClick={() => setSelectedSpring(tier.spring)}
-                           className={cn(
-                             "w-12 h-12 rounded-2xl flex items-center justify-center transition-all bg-zinc-800 border border-white/5 shadow-xl active:scale-95",
-                              selectedSpring === tier.spring ? "bg-brand-accent text-white shadow-xl shadow-brand-accent/30" : "text-zinc-600"
-                           )}
-                         >
-                           <Zap className={cn("w-5 h-5", selectedSpring === tier.spring ? "fill-brand-accent" : "fill-none")} />
-                         </button>
-                      </div>
-                   ) : (
-                      <div className="py-4 text-center">
-                         <span className="text-xs font-bold text-zinc-600 italic">No standard matches</span>
-                      </div>
-                   )}
-                </div>
-             ))}
-          </div>
-        </div>
-
-        {/* Clear Button */}
-        <div className="p-6 bg-zinc-950 pb-32">
-           <button 
-             onClick={() => setSubTab('menu')}
-             className="w-full py-5 bg-zinc-900 border border-white/5 text-white font-black uppercase rounded-2xl shadow-2xl active:scale-[0.98] transition-transform flex items-center justify-center gap-3"
-           >
-             <RefreshCw className="w-4 h-4 text-brand-accent" />
-             Reset Calculation
-           </button>
-        </div>
+        )}
       </div>
     </div>
   );

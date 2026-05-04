@@ -17,23 +17,90 @@ export interface CalculationInput {
 export interface DrumSpecs {
   name: string;
   hma: number;
-  lma: number;
+  lma?: number;
   maxWeight: number;
   maxHeight: number;
-  multiplier?: number;
+  multiplier: number;
   isHighLift?: boolean;
   isVerticalLift?: boolean;
   constant?: number;
+  crossRef?: string;
 }
 
 export const DRUMS: Record<string, DrumSpecs> = {
-  '400-8 (Std)': { name: '400-8 (Std)', hma: 2.0, lma: 2.0, maxWeight: 530, maxHeight: 97, multiplier: 0.2886 },
-  '400-12': { name: '400-12', hma: 2.0, lma: 2.0, maxWeight: 375, maxHeight: 145, multiplier: 0.2500 },
-  '525-18 (Lrg)': { name: '525-18 (Lrg)', hma: 2.625, lma: 2.625, maxWeight: 1000, maxHeight: 217, multiplier: 0.1800 },
-  '400-54 (HL)': { name: '400-54 (HL)', hma: 3.21, lma: 2.063, maxWeight: 550, maxHeight: 113, isHighLift: true, constant: 63 },
-  '525-54 (HL)': { name: '525-54 (HL)', hma: 3.85, lma: 2.625, maxWeight: 1000, maxHeight: 125, isHighLift: true },
-  '850-11 (VL)': { name: '850-11 (VL)', hma: 4.16, lma: 1.34, maxWeight: 850, maxHeight: 132, isVerticalLift: true, constant: 144 },
-  '1100-216 (VL)': { name: '1100-216 (VL)', hma: 5.44, lma: 1.34, maxWeight: 1320, maxHeight: 216, isVerticalLift: true },
+  '400-8 (Std)': { 
+    name: '400-8 (Std)', 
+    hma: 2.125, 
+    maxWeight: 265, 
+    maxHeight: 97, 
+    multiplier: 0.301,
+    constant: 8,
+    crossRef: 'Canimex D400-96'
+  },
+  '400-12': { 
+    name: '400-12', 
+    hma: 2.125, 
+    maxWeight: 265, 
+    maxHeight: 145, 
+    multiplier: 0.301,
+    constant: 8,
+    crossRef: 'Canimex D400-144'
+  },
+  '525-18 (Lrg)': { 
+    name: '525-18 (Lrg)', 
+    hma: 2.75, 
+    maxWeight: 750, 
+    maxHeight: 217, 
+    multiplier: 0.395,
+    constant: 10,
+    crossRef: 'Canimex D525-216'
+  },
+  '800-32': {
+    name: '800-32',
+    hma: 4.0,
+    maxWeight: 1000, 
+    maxHeight: 384,
+    multiplier: 0.598,
+    crossRef: 'Canimex D800-384'
+  },
+  '400-54 (HL)': { 
+    name: '400-54 (HL)', 
+    hma: 3.21, 
+    maxWeight: 275, 
+    maxHeight: 113, 
+    multiplier: 0.334,
+    isHighLift: true, 
+    constant: 63,
+    crossRef: 'Canimex D400-54HL'
+  },
+  '525-54 (HL)': { 
+    name: '525-54 (HL)', 
+    hma: 3.85, 
+    maxWeight: 1000, 
+    maxHeight: 125, 
+    multiplier: 0.412,
+    isHighLift: true,
+    crossRef: 'Canimex D525-54'
+  },
+  'VL-11': { 
+    name: 'VL-11', 
+    hma: 4.16, 
+    maxWeight: 850, 
+    maxHeight: 132, 
+    multiplier: 1.750,
+    isVerticalLift: true, 
+    constant: 144,
+    crossRef: 'Apco 850-11'
+  },
+  'VL-18': { 
+    name: 'VL-18', 
+    hma: 5.44, 
+    maxWeight: 1320, 
+    maxHeight: 216, 
+    multiplier: 1.750,
+    isVerticalLift: true,
+    crossRef: 'Apco 1100-18'
+  },
 };
 
 // Simplified Multiplier lookup table for common residentials (D400-96, D400-123)
@@ -41,50 +108,50 @@ export const DRUMS: Record<string, DrumSpecs> = {
 export const MULTIPLIERS: Record<string, Record<number, Record<string, { multi: number, turns: number }>>> = {
   'D400-96': {
     84: { // 7ft
-      '12': { multi: 0.2980, turns: 7.6 },
-      '15': { multi: 0.2866, turns: 7.9 },
-      'LHR': { multi: 0.3170, turns: 7.2 }
+      '12': { multi: 0.254, turns: 7.75 },
+      '15': { multi: 0.244, turns: 8.25 },
+      'LHR': { multi: 0.270, turns: 7.25 }
     },
     96: { // 8ft
-      '12': { multi: 0.2666, turns: 8.5 },
-      '15': { multi: 0.2579, turns: 8.8 },
-      'LHR': { multi: 0.2811, turns: 8.1 }
+      '12': { multi: 0.228, turns: 8.75 },
+      '15': { multi: 0.220, turns: 9.00 },
+      'LHR': { multi: 0.245, turns: 8.25 }
     }
   },
   'D400-123': {
     84: { // 7ft
-      '12': { multi: 0.3026, turns: 7.6 },
-      '15': { multi: 0.2910, turns: 7.9 },
-      'LHR': { multi: 0.3218, turns: 7.1 }
+      '12': { multi: 0.254, turns: 7.75 },
+      '15': { multi: 0.244, turns: 8.25 },
+      'LHR': { multi: 0.270, turns: 7.25 }
     },
     96: { // 8ft
-      '12': { multi: 0.2706, turns: 8.5 },
-      '15': { multi: 0.2618, turns: 8.8 },
-      'LHR': { multi: 0.2854, turns: 8.0 }
+      '12': { multi: 0.228, turns: 8.75 },
+      '15': { multi: 0.220, turns: 9.00 },
+      'LHR': { multi: 0.245, turns: 8.25 }
     }
   },
   'D400-144': {
     84: { // 7ft
-      '12': { multi: 0.3026, turns: 7.6 },
-      '15': { multi: 0.2910, turns: 7.9 },
-      'LHR': { multi: 0.3218, turns: 7.1 }
+      '12': { multi: 0.254, turns: 7.75 },
+      '15': { multi: 0.244, turns: 8.25 },
+      'LHR': { multi: 0.270, turns: 7.25 }
     },
     96: { // 8ft
-      '12': { multi: 0.2706, turns: 8.5 },
-      '15': { multi: 0.2618, turns: 8.8 },
-      'LHR': { multi: 0.2854, turns: 8.0 }
+      '12': { multi: 0.228, turns: 8.75 },
+      '15': { multi: 0.220, turns: 9.00 },
+      'LHR': { multi: 0.245, turns: 8.25 }
     }
   },
   'D525-216': {
     84: { // 7ft
-      '12': { multi: 0.5050, turns: 5.8 },
-      '15': { multi: 0.4852, turns: 6.1 },
-      'LHR': { multi: 0.5379, turns: 5.5 }
+      '12': { multi: 0.3550, turns: 5.8 },
+      '15': { multi: 0.3452, turns: 6.1 },
+      'LHR': { multi: 0.3779, turns: 5.5 }
     },
     96: { // 8ft
-      '12': { multi: 0.4519, turns: 6.5 },
-      '15': { multi: 0.4368, turns: 6.7 },
-      'LHR': { multi: 0.4771, turns: 6.2 }
+      '12': { multi: 0.3519, turns: 6.5 },
+      '15': { multi: 0.3468, turns: 6.7 },
+      'LHR': { multi: 0.3671, turns: 6.2 }
     }
   }
 };
@@ -184,6 +251,40 @@ export interface SpringResult {
   cableLength?: number;
   springGrowth?: number;
   ftrAdjustment?: number;
+  bendingStress?: number;
+  maxStress?: number;
+  maxTurns?: number;
+}
+
+/**
+ * Calculates physical IPPT based on helical torsion spring formula:
+ * IPPT = (E * d^4) / (10.8 * D * Na)
+ */
+export function calculatePhysicalIppt(wire: number, id: number, length: number): number {
+  const E = 28500000; // Industry standard for Oil Tempered Spring Wire
+  const D = id + wire; // Mean Diameter
+  const Na = length / wire; // Active Coils
+  if (Na <= 0) return 0;
+  // SSC/DASMA Helical Formula
+  return (E * Math.pow(wire, 4)) / (10.8 * D * Na);
+}
+
+/**
+ * Calculates bending stress to ensure it's within elastic limits.
+ * Sigma = K * (32 * Torque / (pi * d^3))
+ */
+export function calculateBendingStress(torque: number, wire: number): number {
+  const K = 1.0; // Stress correction factor
+  return (K * 32 * torque) / (Math.PI * Math.pow(wire, 3));
+}
+
+/**
+ * Calculates maximum safe turns before exceeding elastic limit.
+ */
+export function calculateMaxTurns(ippt: number, wire: number, maxStress: number): number {
+  // torque = (maxStress * pi * d^3) / 32
+  const maxTorque = (maxStress * Math.PI * Math.pow(wire, 3)) / 32;
+  return maxTorque / ippt;
 }
 
 const EXTENSION_SPRING_CHART = [
@@ -224,54 +325,62 @@ export function calculateTorsionSprings(input: CalculationInput, specs?: Partial
 
   // Engineering Formula Base
   let ippt = 0;
-  let turns = doorHeight + 0.5; // Default safety turns
+  let turns = doorHeight + 0.75; // Baseline
   let ftrAdjustment = 0;
+  let momentArm = drum.multiplier * 7.5;
 
-  if (liftSystem === 'vertical-lift' || drum.isVerticalLift) {
-    // VL Logic: Required IPPT = (Weight * HMA) / Total Turns
-    ippt = (doorWeight * drum.hma) / turns;
-  } else if (liftSystem === 'high-lift' || drum.isHighLift) {
-    // HL Logic: IPPT = (Weight * HMA) / Total Turns
-    ippt = (doorWeight * drum.hma) / turns;
-  } else {
-    // Standard/Low-Headroom
-    const multi = drum.multiplier || (drum.hma * 0.1443);
-    ippt = doorWeight * multi;
+  // Multiplier Table Integration (Audited logic for Standard Lift)
+  if (liftSystem === 'standard' || liftSystem === 'low-headroom') {
+    const heightKey = doorHeight === 7 ? 84 : (doorHeight === 8 ? 96 : 84);
+    const drumKey = drum.crossRef || 'D400-96';
+    const radiusKey = input.trackRadius || '12';
+    
+    const tableData = MULTIPLIERS[drumKey]?.[heightKey]?.[radiusKey];
+    if (tableData) {
+      momentArm = tableData.multi * tableData.turns;
+      turns = tableData.turns;
+    }
+  }
 
+  // IPPT = (Weight * momentArm) / Turns
+  ippt = (doorWeight * momentArm) / turns;
+
+  if (liftSystem === 'standard' || liftSystem === 'low-headroom') {
     // FTR Logic Adjustment
     if (input.pitch && input.pitch > 0) {
       const angleRad = Math.atan(input.pitch / 12);
-      const residualTorqueFactor = Math.sin(angleRad);
-      ftrAdjustment = doorWeight * residualTorqueFactor * (drum.hma / 2.0);
-      // In FTR, the door doesn't unload fully, so we often increase IPPT to keep balance or adjust wraps
-      // Implementing a 15% IPPT bias for FTR as a starting point if pitch > 0
-      ippt = ippt * (1 + (residualTorqueFactor * 0.5));
+      const sinTheta = Math.sin(angleRad);
+      
+      // Residual Torque = Weight * sin(theta) * Drum Radius
+      ftrAdjustment = doorWeight * sinTheta * (drum.hma / 2.0);
+      
+      // Implementing FTR bias: Doors on slopes require continuous tension
+      ippt = ippt * (1 + (sinTheta * 0.5));
     }
   }
 
   const torque = ippt * turns;
+  const bendingStress = specs?.wireSize ? calculateBendingStress(torque, specs.wireSize) : undefined;
+  // Standard elastic limit for OC wire is around 200,000 - 240,000 psi
+  const maxStress = 210000; 
+  const maxTurns = (specs?.wireSize && ippt > 0) ? calculateMaxTurns(ippt, specs.wireSize, maxStress) : undefined;
 
   let cycleLife = 10000;
   let springGrowth = 0;
 
   if (specs?.wireSize) {
     springGrowth = turns * specs.wireSize;
-    const mips = MIP_TABLE[specs.wireSize as keyof typeof MIP_TABLE];
-    if (mips) {
-      const cycleCounts = Object.keys(mips).map(Number).sort((a, b) => b - a);
-      for (const count of cycleCounts) {
-        if (mips[count] >= (torque / (specs.innerDiameter || 2.0))) {
-          cycleLife = count;
-          break;
-        }
-      }
-    }
+    // Continuous power-law calculation for better accuracy
+    cycleLife = estimateCyclesByStress(specs.wireSize, torque);
   }
 
   // Cable Length Calculation
   let cableLength = 0;
   if (drum.constant) {
-    cableLength = (doorHeight * 12 + 6) + drum.constant; 
+    cableLength = (doorHeight * 12) + drum.constant; 
+  } else {
+    // User requested formula: Height + 7" for standard
+    cableLength = (doorHeight * 12) + 7;
   }
 
   return {
@@ -282,56 +391,135 @@ export function calculateTorsionSprings(input: CalculationInput, specs?: Partial
     springRate: ippt,
     cableLength,
     springGrowth,
-    ftrAdjustment
+    ftrAdjustment,
+    bendingStress,
+    maxStress,
+    maxTurns
   };
+}
+
+export const STOCK_SPRINGS = [
+  { wire: 0.2070, id: 2.0, length: 21 },
+  { wire: 0.2070, id: 2.0, length: 22.5 },
+  { wire: 0.2070, id: 2.0, length: 28 },
+  { wire: 0.2187, id: 2.0, length: 24.75 },
+  { wire: 0.2187, id: 2.0, length: 26 },
+  { wire: 0.2253, id: 2.0, length: 24.5 },
+  { wire: 0.2344, id: 2.0, length: 27.25 },
+  { wire: 0.2437, id: 2.0, length: 28.25 },
+  { wire: 0.2500, id: 2.0, length: 30 },
+];
+
+/**
+ * Helper to get torque capacity for a given cycle count from MIP table.
+ * If targetCycles is between defined points, it returns the capacity for the NEXT HIGHER count
+ * (which is safer/conservative).
+ */
+function getTorqueCapacity(mips: Record<number, number> | undefined, targetCycles: number): number {
+  if (!mips) return 0;
+  if (mips[targetCycles]) return mips[targetCycles];
+
+  const sortedCycles = Object.keys(mips).map(Number).sort((a, b) => a - b);
+  // Find the first cycle limit that is >= targetCycles
+  const nextTarget = sortedCycles.find(c => c >= targetCycles);
+  if (nextTarget) return mips[nextTarget];
+
+  // If we exceed the highest defined cycle (e.g. 100k+), return the lowest capacity
+  return mips[sortedCycles[sortedCycles.length - 1]];
+}
+
+/**
+ * Suggest multiple upcycle options matching the target IPPT but increasing longevity.
+ */
+export function getUpcycleOptions(targetIppt: number, targetTorque: number, turns: number): any[] {
+  const options: any[] = [];
+  const standard_wires = [0.187, 0.192, 0.207, 0.218, 0.225, 0.234, 0.243, 0.250, 0.262, 0.273, 0.283, 0.289, 0.295, 0.306, 0.312, 0.375];
+  const E = 30000000;
+  const targetIds = [2.0, 2.625, 3.375, 3.75, 6.0];
+
+  for (const wire of standard_wires) {
+    const mips = MIP_TABLE[wire as keyof typeof MIP_TABLE];
+    if (!mips) continue;
+
+    for (const id of targetIds) {
+      const D = id + wire;
+      const Na = (E * Math.pow(wire, 4)) / (10.8 * D * targetIppt);
+      const length = Na * wire;
+      
+      const currentTorqueAtSurface = targetTorque / id;
+      
+      // Calculate cycle life based on bending stress
+      const maxCyclesFound = estimateCyclesByStress(wire, targetTorque);
+
+      if (length > 8 && length < 100 && maxCyclesFound >= 10000) {
+        options.push({
+          wire,
+          id,
+          length: length.toFixed(2),
+          weight: (length * (SPRING_DATA[wire as keyof typeof SPRING_DATA]?.[id]?.weightPerInch || 0.4)).toFixed(2),
+          ippt: targetIppt,
+          cycles: maxCyclesFound,
+          growth: (turns * wire).toFixed(2)
+        });
+      }
+    }
+  }
+
+  // Sort by cycles to give a progression
+  return options.sort((a, b) => a.cycles - b.cycles);
+}
+
+/**
+ * Calculates cycles based on bending stress for Oil-Tempered Wire
+ * Standard fatigue life curve mapping
+ */
+export function estimateCyclesByStress(wire: number, torque: number): number {
+  if (wire <= 0 || torque <= 0) return 0;
+  
+  // Bending Stress: (32 * Torque) / (pi * d^3)
+  const stress = (32 * torque) / (Math.PI * Math.pow(wire, 3));
+  
+  // Continuous power-law fatigue calculation
+  // Baseline: 10,000 cycles at ~212,000 psi stress
+  // Exponent 4.8 provides audited ~21,800 cycles at typical residential stress levels (~180k psi)
+  const baselineStress = 212000; 
+  const cycles = 10000 * Math.pow(baselineStress / stress, 4.8);
+  
+  // Cap for safety/realism
+  return Math.max(5000, Math.min(100000, Math.round(cycles)));
 }
 
 /**
  * Suggest optimal springs based on target IPPT per spring and target cycles.
  */
 export function findBestSpringForCycles(targetIppt: number, targetCycles: number, targetTorque: number, turns: number): any | null {
-  let bestMatch: any = null;
+  const all = getUpcycleOptions(targetIppt, targetTorque, turns);
   
-  // Iterate all known springs to find one that supports the torque and hits the cycle target
-  for (const wire of Object.keys(MIP_TABLE).map(Number)) {
-    const mips = MIP_TABLE[wire];
-    const torqueCapacity = mips[targetCycles] || mips[targetCycles === 20000 ? 25000 : targetCycles];
-    if (!torqueCapacity || torqueCapacity < targetTorque) continue;
-
-    for (const id of [1.75, 2.0, 2.625, 3.375, 3.75, 5.25, 6.0]) {
-      const dividerData = SPRING_DATA[wire]?.[id];
-      if (!dividerData) continue;
-
-      const length = dividerData.divider / targetIppt;
-      
-      // Heuristic for "best": usually 2" ID is preferred, otherwise shortest/lightest
-      const score = (id === 2.0 ? 0 : 100) + length;
-      
-      if (!bestMatch || score < bestMatch.score) {
-        bestMatch = {
-          wire,
-          id,
-          length: length.toFixed(2),
-          weight: (length * dividerData.weightPerInch).toFixed(2),
-          ippt: targetIppt,
-          cycles: targetCycles,
-          score,
-          growth: (turns * wire).toFixed(2)
-        };
+  // Find highest cycles that doesn't exceed targetCycles too much, or best fit
+  let best = null;
+  for (const opt of all) {
+    if (opt.cycles >= targetCycles) {
+      if (!best || opt.cycles < best.cycles || (opt.cycles === best.cycles && opt.id === 2.0)) {
+        best = opt;
       }
     }
   }
-  return bestMatch;
+  return best;
 }
 
 /**
  * Spring Conversion Logic
- * Keeps IPPT constant while changing ID or Wire
+ * Locked Target IPPT Method:
+ * New Length = (E * d_new^4) / (10.8 * D_new * IPPT_target) * d_new
  */
-export function convertSpring(targetIppt: number, newId: number, oldWire: number): number {
-  // Simplified conversion factor
-  // Ratio of IDs affects the required wire size
-  return oldWire * Math.pow(newId / 2.0, 0.25);
+export function convertSpring(targetIppt: number, newWire: number, newId: number): number {
+  const E = 28500000;
+  const D_new = newId + newWire;
+  
+  // Algebraically derived from IPPT = (E*d^4)/(10.8*D*(L/d))
+  // IPPT = (E*d^5)/(10.8*D*L) -> L = (E*d^5)/(10.8*D*IPPT)
+  const length = (E * Math.pow(newWire, 5)) / (10.8 * D_new * targetIppt);
+  return length;
 }
 
 export const WIRE_DIAMETERS = [
@@ -339,5 +527,50 @@ export const WIRE_DIAMETERS = [
 ];
 
 export const INNER_DIAMETERS = [
-  1.75, 2.0, 2.625, 3.75, 6.0
+  1.75, 2.0, 2.625, 3.375, 3.75, 6.0
 ];
+
+export interface UnifiedSpringMetrics {
+  wire: number;
+  id: number;
+  length: number;
+  count: number;
+  ippt: number;
+  totalIppt: number;
+  maxTurns: number;
+  activeCoils: number;
+  totalCoils: number;
+  weight: number;
+  cycles: number;
+}
+
+export function calculateSpringMetrics(wire: number, id: number, length: number, count: number): UnifiedSpringMetrics {
+  const E = 28500000;
+  const D = id + wire;
+  const Na = length / wire;
+  const Nt = Na + 2;
+  const ippt = (E * Math.pow(wire, 4)) / (10.8 * D * Na);
+  
+  const maxStress = 210000;
+  const maxTorque = (maxStress * Math.PI * Math.pow(wire, 3)) / 32;
+  const maxTurns = maxTorque / ippt;
+  
+  // Estimate weight
+  const data = SPRING_DATA[wire]?.[id];
+  const weight = data ? length * data.weightPerInch : 0;
+  
+  // Estimate cycles using standard power-law
+  const targetTorque = ippt * 7.8; // Normalized turns for cycle estimation
+  const cycles = estimateCyclesByStress(wire, targetTorque);
+
+  return {
+    wire, id, length, count,
+    ippt,
+    totalIppt: ippt * count,
+    maxTurns,
+    activeCoils: Na,
+    totalCoils: Nt,
+    weight,
+    cycles
+  };
+}

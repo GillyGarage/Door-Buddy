@@ -153,7 +153,7 @@ function AppContent() {
 
   const tabs = [
     { id: 'home', icon: Home, label: 'Dashboard' },
-    { id: 'springs', icon: Calculator, label: 'Engineering' },
+    { id: 'springs', icon: Calculator, label: 'Spring Calculations' },
     { id: 'checklists', icon: CheckSquare, label: 'Site Checks' },
     { id: 'edu', icon: GraduationCap, label: 'Training' },
     { id: 'studio', icon: Video, label: 'Studio' },
